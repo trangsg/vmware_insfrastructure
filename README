@@ -1,4 +1,4 @@
-VMware Cluster & VM Resource Analytics Project
+*VMware Cluster & VM Resource Analytics Project*
 Overview
 
 This project demonstrates advanced SQL data engineering and analytics skills applied to VMware infrastructure data. It consolidates, cleans, and analyzes virtual machine (VM) and cluster information to produce actionable insights on hardware, VM inventory, and resource utilization.
