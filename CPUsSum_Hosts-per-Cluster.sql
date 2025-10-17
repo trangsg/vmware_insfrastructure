@@ -1,5 +1,5 @@
 -- ============================================
--- QUERY: Cluster-Level Summary of VMware Resources
+-- QUERY: Cluster-Level Summary of VMware Resources (Fictional)
 -- ============================================
 -- Purpose: Aggregate CPU, Host, and VM information by cluster,
 --          along with extracted hardware identifiers from host details.
@@ -10,55 +10,53 @@
 -- Calculates total CPUs, number of hosts, and
 -- extracts manufacturer/model details per cluster.
 -- --------------------------------------------
-
 WITH HostAggregates AS (
     SELECT 
-        vHostCluster,  -- Cluster name each host belongs to
+        HostCluster,  -- Cluster name each host belongs to
 
         -- Total number of CPUs across all hosts in the cluster
-        SUM(CAST(vHostNumCPU AS int)) AS TotalCPUs,
+        SUM(CAST(NumCPU AS int)) AS TotalCPUs,
 
-        -- Count of unique host machines in the cluster
-        COUNT(DISTINCT vHostName) AS Nb_Hosts,
+        -- Count of unique hosts in the cluster
+        COUNT(DISTINCT HostName) AS Nb_Hosts,
 
         -- Extract first word from manufacturer (e.g., "Dell" from "Dell Inc.")
         -- Skip if manufacturer name starts with "vmware"
         CASE
-            WHEN LOWER(vHostManufacturer) LIKE 'vmware%' THEN NULL
-            ELSE LEFT(vHostManufacturer, CHARINDEX(' ', vHostManufacturer + ' ') - 1)
+            WHEN LOWER(Manufacturer) LIKE 'vmware%' THEN NULL
+            ELSE LEFT(Manufacturer, CHARINDEX(' ', Manufacturer + ' ') - 1)
         END AS FirstWord,
 
-        -- Extract last two segments from model name (after the last '-')
+        -- Extract last segment from model name (after the last '-')
         -- Skip if model name starts with "vmware"
         CASE
-            WHEN LOWER(vHostModel) LIKE 'vmware%' THEN NULL
-            ELSE REVERSE(LEFT(REVERSE(vHostModel), CHARINDEX('-', REVERSE(vHostModel) + '-') - 1))
+            WHEN LOWER(Model) LIKE 'vmware%' THEN NULL
+            ELSE REVERSE(LEFT(REVERSE(Model), CHARINDEX('-', REVERSE(Model) + '-') - 1))
         END AS LastTwoSegments,
 
-        -- CPU information for each host
-        vHostCpuNum AS CpuNum,
-        vHostCpuCore AS CpuCore,
+        -- CPU info for each host
+        CpuNum,
+        CpuCore,
 
         -- Concatenate extracted manufacturer, model, and CPU details
-        -- to form a unique hardware signature
         CONCAT(
             CASE
-                WHEN LOWER(vHostManufacturer) LIKE 'vmware%' THEN ''
-                ELSE LEFT(vHostManufacturer, CHARINDEX(' ', vHostManufacturer + ' ') - 1)
+                WHEN LOWER(Manufacturer) LIKE 'vmware%' THEN ''
+                ELSE LEFT(Manufacturer, CHARINDEX(' ', Manufacturer + ' ') - 1)
             END,
             '-',
             CASE
-                WHEN LOWER(vHostModel) LIKE 'vmware%' THEN ''
-                ELSE REVERSE(LEFT(REVERSE(vHostModel), CHARINDEX('-', REVERSE(vHostModel) + '-') - 1))
+                WHEN LOWER(Model) LIKE 'vmware%' THEN ''
+                ELSE REVERSE(LEFT(REVERSE(Model), CHARINDEX('-', REVERSE(Model) + '-') - 1))
             END,
             '-',
-            vHostCpuNum,
+            CpuNum,
             '-',
-            vHostCpuCore
+            CpuCore
         ) AS Result
 
     FROM 
-        [VMWARE_RVTOOLS].[dbo].[VMWARE_RVTools_tabvHost]
+        Fictional_Hosts
 ),
 
 -- --------------------------------------------
@@ -66,55 +64,53 @@ WITH HostAggregates AS (
 -- Calculates the number of VMs per cluster and
 -- breaks them down by operating system.
 -- --------------------------------------------
-
 VMAggregates AS (
     SELECT 
-        vInfoCluster,  -- Cluster name each VM belongs to
+        VMCluster,  -- Cluster name each VM belongs to
 
         -- Total number of distinct VMs per cluster
-        COUNT(DISTINCT vInfoVMName) AS Nb_VM,
+        COUNT(DISTINCT VMName) AS Nb_VM,
 
         -- Total count of OS entries (may include duplicates)
-        COUNT(vInfoOS) AS vInfoOS_Total,
+        COUNT(OS) AS OS_Total,
 
         -- Count of unique Windows VMs
         COUNT(DISTINCT CASE 
-                           WHEN vInfoOS LIKE '%Windows%' THEN vInfoVMName
-                      END) AS vInfoOS_Windows,
+                           WHEN OS LIKE '%Windows%' THEN VMName
+                      END) AS OS_Windows,
 
         -- Count of unique Linux VMs (specifically Red Hat)
         COUNT(DISTINCT CASE 
-                           WHEN vInfoOS LIKE '%Red Hat%' THEN vInfoVMName
-                      END) AS vInfoOS_Linux,
+                           WHEN OS LIKE '%Red Hat%' THEN VMName
+                      END) AS OS_Linux,
 
         -- Count of other OS types (not Windows or Red Hat)
         COUNT(DISTINCT CASE 
-                           WHEN vInfoOS NOT LIKE '%Red Hat%' AND vInfoOS NOT LIKE '%Windows%' THEN vInfoVMName
-                      END) AS vInfoOS_Others
+                           WHEN OS NOT LIKE '%Red Hat%' AND OS NOT LIKE '%Windows%' THEN VMName
+                      END) AS OS_Others
 
     FROM 
-        [VMWARE_RVTOOLS].[dbo].[VMWARE_RVTools_tabvInfo]
+        Fictional_VMs
 
     GROUP BY 
-        vInfoCluster
+        VMCluster
 )
 
 -- --------------------------------------------
 -- Final Select:
 -- Combine Cluster, Host, and VM aggregates into one view
 -- --------------------------------------------
-
 SELECT 
-    cluster.vClusterName,  -- Cluster identifier
+    cluster.ClusterName,  -- Cluster identifier
 
     -- Aggregated metrics with default 0 for missing values
     COALESCE(hostAgg.TotalCPUs, 0) AS nb_cpu,
     COALESCE(hostAgg.Nb_Hosts, 0) AS Nb_Hosts,
     COALESCE(vmAgg.Nb_VM, 0) AS Nb_VM,
-    COALESCE(vmAgg.vInfoOS_Total, 0) AS vInfoOS_Total,
-    COALESCE(vmAgg.vInfoOS_Windows, 0) AS vInfoOS_Windows,
-    COALESCE(vmAgg.vInfoOS_Linux, 0) AS vInfoOS_Linux,
-    COALESCE(vmAgg.vInfoOS_Others, 0) AS vInfoOS_Others,
+    COALESCE(vmAgg.OS_Total, 0) AS OS_Total,
+    COALESCE(vmAgg.OS_Windows, 0) AS OS_Windows,
+    COALESCE(vmAgg.OS_Linux, 0) AS OS_Linux,
+    COALESCE(vmAgg.OS_Others, 0) AS OS_Others,
 
     -- Include extracted and derived hardware information
     hostAgg.FirstWord,
@@ -124,14 +120,14 @@ SELECT
     hostAgg.Result
 
 FROM 
-    [VMWARE_RVTOOLS].[dbo].[VMWARE_RVTools_tabvCluster] AS cluster
+    Fictional_Clusters AS cluster
 
 -- Join with host aggregates on cluster name
 LEFT JOIN 
     HostAggregates AS hostAgg
-    ON cluster.vClusterName = hostAgg.vHostCluster
+    ON cluster.ClusterName = hostAgg.HostCluster
 
 -- Join with VM aggregates on cluster name
 LEFT JOIN 
     VMAggregates AS vmAgg
-    ON cluster.vClusterName = vmAgg.vInfoCluster;
+    ON cluster.ClusterName = vmAgg.VMCluster;
